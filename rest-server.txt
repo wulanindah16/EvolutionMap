@@ -1,0 +1,144 @@
+const wbook = SpreadsheetApp.getActive();
+
+function doGet(e) {
+  let params = e.parameter;
+
+  const sheet = wbook.getSheetByName(params.sheetName);
+
+  let data = [];
+  const rlen = sheet.getLastRow();
+  const clen = sheet.getLastColumn();
+  const rows = sheet.getRange(1, 1, rlen, clen).getValues();
+
+  const headers = rows[0];
+
+  rows.slice(1).forEach(row => {
+    let record = {};
+
+    headers.forEach((header, index) => {
+      record[header] = row[index];
+    });
+
+    data.push(record);
+  });
+
+  let responseData;
+  if (params.no) {
+    let serviceData = data.find((item) => item.no === params.no);
+
+    if (!serviceData) {
+      responseData = {
+        error: "Service not found",
+      };
+    } else {
+      responseData = {
+        data: serviceData,
+      };
+    }
+  } else {
+    responseData = {
+      data: data,
+    };
+  }
+
+  return ContentService.createTextOutput(JSON.stringify(responseData))
+    .setMimeType(ContentService.MimeType.JSON);
+
+}
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.tryLock(10000);
+
+  try {
+    const sheetName = wbook.getSheetByName("Map");
+
+    let dataPost = JSON.parse(e.postData.contents)
+
+
+    if (dataPost.action === 'create') {
+
+      const { nama, deskripsi, alamat, jambuka, latitude, longitude, gambar } = dataPost;
+      const lastRow = sheetName.getLastRow();
+
+      let data = [
+        lastRow,
+        nama,
+        deskripsi,
+        alamat,
+        jambuka,
+        `'${latitude}`,
+        `'${longitude}`,
+        gambar
+      ];
+
+      sheetName.appendRow(data);
+
+      responseData = {
+        'status': true,
+        'message': 'Berhasil menambahkan lokasi!'
+      };
+    } else if (dataPost.action === 'update') {
+
+      const range = sheetName.getRange(2, 1, sheetName.getLastRow(), sheetName.getLastColumn());
+      const values = range.getValues();
+
+      const { no, nama, deskripsi, alamat, jambuka, latitude, longitude, gambar } = dataPost;
+
+      for (let i = 0; i < values.length; i++) {
+        if (values[i][0] === Number(no)) {
+
+          // update kolom dari mulai kolom nama
+          sheetName.getRange(i + 2, 2).setValue(nama);
+          sheetName.getRange(i + 2, 3).setValue(deskripsi);
+          sheetName.getRange(i + 2, 4).setValue(alamat);
+          sheetName.getRange(i + 2, 5).setValue(jambuka);
+          sheetName.getRange(i + 2, 6).setValue(`'${latitude}`);
+          sheetName.getRange(i + 2, 7).setValue(`'${longitude}`);
+          sheetName.getRange(i + 2, 8).setValue(gambar);
+
+          break;
+        }
+      }
+
+      responseData = {
+        'status' : true,
+        'message': 'Berhasil memperbarui lokasi!'
+      };
+    } else if (dataPost.action === 'delete') {
+      const range = sheetName.getRange(2, 1, sheetName.getLastRow(), sheetName.getLastColumn());
+      const values = range.getValues();
+
+      const {no} = dataPost;
+
+      for (let i = 0; i < values.length; i++) {
+        if (values[i][0] === Number(no)) {
+          sheetName.deleteRow(i + 2);
+          break;
+        }
+      }
+
+      responseData = {
+        'status': true,
+        'message': 'Berhasil menghapus lokasi!'
+      };
+    }else{
+      responseData = {
+        'status': true,
+        'message': 'Aksi tidak diketaui!'
+      };
+    }
+
+    return ContentService.createTextOutput(JSON.stringify(responseData))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (e) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ 'result': 'error', 'error': e }))
+      .setMimeType(ContentService.MimeType.JSON)
+  }
+
+  finally {
+    lock.releaseLock()
+  }
+
+}
